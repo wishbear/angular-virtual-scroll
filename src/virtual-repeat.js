@@ -197,6 +197,24 @@
         // The watch on the collection is just a watch on the length of the
         // collection. We don't care if the content changes.
         scope.$watch(sfVirtualRepeatWatchExpression, sfVirtualRepeatListener, true);
+        
+        if(attr.sfVirtualForceRefreshOn) {
+          scope.$on(attr.sfVirtualForceRefreshOn, function(){
+            var coll = scope.$eval(ident.collection);
+            if( coll.length !== state.total ){
+                state.total = coll.length;
+                recomputeActive();
+            }
+
+            var newValue = {
+                start: state.firstActive,
+                active: state.active,
+                len: coll.length,
+                coll: coll
+            };
+            sfVirtualRepeatListener(newValue,{},scope)
+          })
+        }
 
         // and that's the link done! All the action is in the handlers...
         return;
