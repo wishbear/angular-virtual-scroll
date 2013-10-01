@@ -157,6 +157,10 @@
     function sfVirtualRepeatCompile(element, attr, linker) {
       var ident = parseRepeatExpression(attr.sfVirtualRepeat);
 
+      var getCollection = function (scope, expression) {
+        return scope.$eval(expression) || []
+      }
+
       return {
         post: sfVirtualRepeatPostLink
       };
@@ -200,7 +204,7 @@
         
         if(attr.sfVirtualForceRefreshOn) {
           scope.$on(attr.sfVirtualForceRefreshOn, function(){
-            var coll = scope.$eval(ident.collection);
+            var coll = getCollection(scope, ident.collection);
             if( coll.length !== state.total ){
                 state.total = coll.length;
                 recomputeActive();
@@ -219,7 +223,7 @@
         // and that's the link done! All the action is in the handlers...
         return;
         // ----
-
+        
         // Apply explicit styles to the item element
         function setElementCss (element) {
           var elementCss = {
@@ -298,7 +302,7 @@
         }
 
         function sfVirtualRepeatWatchExpression(scope){
-          var coll = scope.$eval(ident.collection);
+          var coll = getCollection(scope, ident.collection);
           if( coll.length !== state.total ){
             state.total = coll.length;
             recomputeActive();
@@ -322,61 +326,66 @@
         // When the watch expression for the repeat changes, we may need to add
         // and remove scopes and elements
         function sfVirtualRepeatListener(newValue, oldValue, scope){
-          var oldEnd = oldValue.start + oldValue.active,
-              collection = scope.$eval(ident.collection),
-              newElements;
-          if( newValue === oldValue ){
-            $log.info('initial listen');
-            newElements = addElements(newValue.start, oldEnd, collection, scope, iterStartElement);
-            rendered = newElements;
-            if( rendered.length ){
-              rowHeight = computeRowHeight(newElements[0][0]);
-            }
-          }else{
-            var newEnd = newValue.start + newValue.active;
-            var forward = newValue.start >= oldValue.start;
-            var delta = forward ? newValue.start - oldValue.start
-                                : oldValue.start - newValue.start;
-            var endDelta = newEnd >= oldEnd ? newEnd - oldEnd : oldEnd - newEnd;
-            var contiguous = delta < (forward ? oldValue.active : newValue.active);
-            $log.info('change by %o,%o rows %s', delta, endDelta, forward ? 'forward' : 'backward');
-            if( !contiguous ){
-              $log.info('non-contiguous change');
-              destroyActiveElements('pop', rendered.length);
-              rendered = addElements(newValue.start, newEnd, collection, scope, iterStartElement);
+          try {
+            var oldEnd = oldValue.start + oldValue.active,
+                collection = scope.$eval(ident.collection),
+                newElements;
+            if( newValue === oldValue ){
+              $log.info('initial listen');
+              newElements = addElements(newValue.start, oldEnd, collection, scope, iterStartElement);
+              rendered = newElements;
+              if( rendered.length ){
+                rowHeight = computeRowHeight(newElements[0][0]);
+              }
             }else{
-              if( forward ){
-                $log.info('need to remove from the top');
-                destroyActiveElements('shift', delta);
-              }else if( delta ){
-                $log.info('need to add at the top');
-                newElements = addElements(
-                  newValue.start,
-                  oldValue.start,
-                  collection, scope, iterStartElement);
-                rendered = newElements.concat(rendered);
+              var newEnd = newValue.start + newValue.active;
+              var forward = newValue.start >= oldValue.start;
+              var delta = forward ? newValue.start - oldValue.start
+                                  : oldValue.start - newValue.start;
+              var endDelta = newEnd >= oldEnd ? newEnd - oldEnd : oldEnd - newEnd;
+              var contiguous = delta < (forward ? oldValue.active : newValue.active);
+              $log.info('change by %o,%o rows %s', delta, endDelta, forward ? 'forward' : 'backward');
+              if( !contiguous ){
+                $log.info('non-contiguous change');
+                destroyActiveElements('pop', rendered.length);
+                rendered = addElements(newValue.start, newEnd, collection, scope, iterStartElement);
+              }else{
+                if( forward ){
+                  $log.info('need to remove from the top');
+                  destroyActiveElements('shift', delta);
+                }else if( delta ){
+                  $log.info('need to add at the top');
+                  newElements = addElements(
+                    newValue.start,
+                    oldValue.start,
+                    collection, scope, iterStartElement);
+                  rendered = newElements.concat(rendered);
+                }
+                if( newEnd < oldEnd ){
+                  $log.info('need to remove from the bottom');
+                  destroyActiveElements('pop', oldEnd - newEnd);
+                }else if( endDelta ){
+                  var lastElement = rendered[rendered.length-1];
+                  $log.info('need to add to the bottom');
+                  newElements = addElements(
+                    oldEnd,
+                    newEnd,
+                    collection, scope, lastElement);
+                  rendered = rendered.concat(newElements);
+                }
               }
-              if( newEnd < oldEnd ){
-                $log.info('need to remove from the bottom');
-                destroyActiveElements('pop', oldEnd - newEnd);
-              }else if( endDelta ){
-                var lastElement = rendered[rendered.length-1];
-                $log.info('need to add to the bottom');
-                newElements = addElements(
-                  oldEnd,
-                  newEnd,
-                  collection, scope, lastElement);
-                rendered = rendered.concat(newElements);
+              if( !rowHeight && rendered.length ){
+                rowHeight = computeRowHeight(rendered[0][0]);
               }
+              dom.content.css({'padding-top': newValue.start * rowHeight + 'px'});
             }
-            if( !rowHeight && rendered.length ){
-              rowHeight = computeRowHeight(rendered[0][0]);
+            dom.content.css({'height': newValue.len * rowHeight + 'px'});
+            if( sticky ){
+              dom.viewport[0].scrollTop = dom.viewport[0].clientHeight + dom.viewport[0].scrollHeight;
             }
-            dom.content.css({'padding-top': newValue.start * rowHeight + 'px'});
-          }
-          dom.content.css({'height': newValue.len * rowHeight + 'px'});
-          if( sticky ){
-            dom.viewport[0].scrollTop = dom.viewport[0].clientHeight + dom.viewport[0].scrollHeight;
+          } catch (e) {
+            // do not flood in error log
+            $log.warn(e)
           }
         }
       }
